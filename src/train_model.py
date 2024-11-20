@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from model import MultimodalModel  # Import the model class
 from data_prep import MultimodalDataset  # Import the dataset class
 
-# Define RMSRE Loss-Function
+# Define RMSRE Loss Function
 class RMSRELoss(nn.Module):
     def __init__(self):
         super(RMSRELoss, self).__init__()
