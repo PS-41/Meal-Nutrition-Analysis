@@ -3,8 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class MultimodalModel(nn.Module):
-    def __init__(self, image_size=(64, 64, 3), cgm_size=16, demo_size=54):
-        super(MultimodalModel, self).__init__()
+    def __init__(self, image_size=(64, 64, 3), cgm_size=16, demo_size=52, dropout_rate=0.5):
+        super().__init__()
 
         # Image branch (CNN)
         self.cnn = nn.Sequential(
@@ -27,7 +27,10 @@ class MultimodalModel(nn.Module):
         self.demo_fc = nn.Sequential(
             nn.Linear(demo_size, 64),
             nn.ReLU(),
-            nn.Linear(64, 128)
+            nn.Dropout(dropout_rate),  # Dropout added here
+            nn.Linear(64, 128),
+            nn.ReLU(),
+            nn.Dropout(dropout_rate)  # Dropout added here
         )
 
         # Joint embedding and prediction

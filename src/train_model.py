@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, SubsetRandomSampler
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, KFold
 from tqdm import tqdm
 import matplotlib.pyplot as plt
 from model import MultimodalModel  # Import the model class
@@ -95,6 +95,45 @@ def train_full_model(model, dataloader, criterion, optimizer, num_epochs=20, dev
 
     return loss_history
 
+def cross_validate_model(dataset, num_epochs=20, batch_size=32, device='cuda', k_folds=5):
+    kfold = KFold(n_splits=k_folds, shuffle=True, random_state=42)
+    results = []
+
+    # K-Fold Cross Validation
+    for fold, (train_idx, val_idx) in enumerate(kfold.split(dataset)):
+        print(f"Fold {fold + 1}/{k_folds}")
+        
+        # Prepare data loaders for the current fold
+        train_sampler = SubsetRandomSampler(train_idx)
+        val_sampler = SubsetRandomSampler(val_idx)
+        train_loader = DataLoader(dataset, batch_size=batch_size, sampler=train_sampler)
+        val_loader = DataLoader(dataset, batch_size=batch_size, sampler=val_sampler)
+        
+        # Initialize model, loss function, and optimizer for this fold
+        model = MultimodalModel(image_size=(64, 64, 3), cgm_size=16, demo_size=41)
+        criterion = RMSRELoss()
+        optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
+        
+        # Train the model for the current fold and calculate loss
+        fold_train_loss, fold_val_loss = train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device)
+
+        # After training, collect the results (e.g., train loss and validation loss for each fold)
+        results.append((fold_train_loss, fold_val_loss))
+
+        print(f"Completed Fold {fold + 1}/{k_folds}")
+
+    # Plot the final cross-validation result and save
+    plot_training_curve(fold_train_loss, fold_val_loss, save_path="../results/cv_training_curve.png")
+
+    # Average the training and validation loss across all folds
+    avg_train_loss = torch.mean(torch.tensor([x[0][-1] for x in results]), dim=0)
+    avg_val_loss = torch.mean(torch.tensor([x[1][-1] for x in results]), dim=0)
+
+    print(f"Average training loss across all {k_folds} folds: {avg_train_loss:.4f}")
+    print(f"Average validation loss across all {k_folds} folds: {avg_val_loss:.4f}")
+
+    return avg_train_loss, avg_val_loss
+
 def plot_training_curve(train_loss, val_loss, save_path=None):
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, len(train_loss) + 1), train_loss, marker='o', label="Train Loss")
@@ -113,26 +152,32 @@ if __name__ == "__main__":
     dataset = metadata["dataset"]
     batch_size = metadata["batch_size"]
 
-    val_split = 0.2
-    indices = list(range(len(dataset)))
-    train_indices, val_indices = train_test_split(indices, test_size=val_split, random_state=42)
+    # val_split = 0.2
+    # indices = list(range(len(dataset)))
+    # train_indices, val_indices = train_test_split(indices, test_size=val_split, random_state=42)
 
-    train_loader = DataLoader(dataset, batch_size=batch_size, sampler=SubsetRandomSampler(train_indices))
-    val_loader = DataLoader(dataset, batch_size=batch_size, sampler=SubsetRandomSampler(val_indices))
-    print("Train and Validation DataLoaders created successfully.")
+    # train_loader = DataLoader(dataset, batch_size=batch_size, sampler=SubsetRandomSampler(train_indices))
+    # val_loader = DataLoader(dataset, batch_size=batch_size, sampler=SubsetRandomSampler(val_indices))
+    # print("Train and Validation DataLoaders created successfully.")
 
-    model = MultimodalModel(image_size=(64, 64, 3), cgm_size=16, demo_size=54)
-    criterion = RMSRELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    # model = MultimodalModel(image_size=(64, 64, 3), cgm_size=16, demo_size=41)
+    # criterion = RMSRELoss()
+    # optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
 
     num_epochs = 20
     device = 'cpu'
-    train_loss, val_loss = train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs=num_epochs, device=device)
+    # train_loss, val_loss = train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs=num_epochs, device=device)
+    avg_train_loss, avg_val_loss = cross_validate_model(dataset, num_epochs=num_epochs, batch_size=batch_size, device=device, k_folds=5)
 
-    plot_training_curve(train_loss, val_loss, save_path="../results/training_curve.png")
+    # plot_training_curve(train_loss, val_loss, save_path="../results/training_curve.png")
 
-    full_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
+    # Hyperparameter tuning
+    
     print("Training on the full dataset now...")
+    model = MultimodalModel(image_size=(64, 64, 3), cgm_size=16, demo_size=41)
+    criterion = RMSRELoss()
+    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
+    full_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     full_loss_history = train_full_model(model, full_loader, criterion, optimizer, num_epochs=num_epochs, device=device)
 
     torch.save(model.state_dict(), "../results/final_multimodal_model.pth")

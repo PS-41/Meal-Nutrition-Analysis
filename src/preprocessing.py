@@ -144,11 +144,9 @@ def preprocess_demo_viome(demo_viome_data):
     # Define columns
     categorical_cols = ['Gender', 'Race', 'Diabetes Status']
     numerical_cols = [
-        'Age', 'Weight', 'Height', 'BMI', 'A1C', 
-        'Baseline Fasting Glucose', 'Insulin', 'Triglycerides', 
-        'Cholesterol', 'HDL', 'Non-HDL', 'LDL', 'VLDL', 
-        'CHO/HDL Ratio', 'HOMA-IR', 'Breakfast Fiber', 'Lunch Fiber',
-        'Breakfast Time', 'Lunch Time'  # Include times
+        'Breakfast Time', 'Lunch Time', 
+        'Breakfast Calories', 'Breakfast Carbs', 
+        'Breakfast Fat', 'Breakfast Protein'
     ]
     microbiome_col = 'Viome'  # Explicitly handle the Viome column
 
