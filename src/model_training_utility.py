@@ -106,7 +106,7 @@ def k_fold_cross_validation(dataset, hyperparams, num_epochs, k_folds, device):
         model = MultimodalModel(
                 image_size=(64, 64, 3),
                 cgm_size=16,
-                demo_size=41,
+                demo_size=31,
                 dropout_rate=hyperparams['dropout_rate'],
                 cnn_filters=hyperparams['cnn_filters'],
                 lstm_hidden_size=hyperparams['lstm_hidden_size'],

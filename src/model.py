@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class MultimodalModel(nn.Module):
-    def __init__(self, image_size=(64, 64, 3), cgm_size=16, demo_size=52, 
+    def __init__(self, image_size=(64, 64, 3), cgm_size=16, demo_size=31, 
                  dropout_rate=0.5, cnn_filters=(16, 32), lstm_hidden_size=64, num_lstm_layers=1):
         super().__init__()
 

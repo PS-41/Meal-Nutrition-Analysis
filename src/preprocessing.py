@@ -1,7 +1,8 @@
 import pandas as pd
 import ast
 from ast import literal_eval
-
+import pickle
+import os
 import numpy as np
 from torchvision import transforms
 from PIL import Image
@@ -133,7 +134,7 @@ def preprocess_cgm(cgm_column, resample_freq='30T', max_length=16):
     
     return np.array(processed_cgm)
 
-def preprocess_demo_viome(demo_viome_data):
+def preprocess_demo_viome(demo_viome_data, is_test=False, save_dir="../results/"):
     """
     Preprocess demographic and microbiome data.
 
@@ -177,51 +178,96 @@ def preprocess_demo_viome(demo_viome_data):
         demo_viome_data[time_col] = demo_viome_data.apply(
             lambda row: fill_time_with_subject_mean(row, time_col), axis=1
         )
-
+    
     # Expand the Viome column into separate numerical features
-    viome_features = demo_viome_data[microbiome_col].str.split(',', expand=True)
-    viome_features.columns = [f'Viome_{i+1}' for i in range(viome_features.shape[1])]
-    viome_features = viome_features.astype(float)  # Ensure numerical type
+        viome_features = demo_viome_data[microbiome_col].str.split(',', expand=True)
+        viome_features.columns = [f'Viome_{i+1}' for i in range(viome_features.shape[1])]
+        viome_features = viome_features.astype(float)  # Ensure numerical type
 
-    # Combine Viome features with the main data
-    demo_viome_data_expanded = pd.concat([demo_viome_data, viome_features], axis=1)
-    demo_viome_data_expanded.drop(columns=[microbiome_col, 'Subject ID'], inplace=True)
+        # Combine Viome features with the main data
+        demo_viome_data_expanded = pd.concat([demo_viome_data, viome_features], axis=1)
+        demo_viome_data_expanded.drop(columns=[microbiome_col, 'Subject ID'], inplace=True)
 
-    # Perform feature selection
-    target_column = 'Lunch Calories'
-    selected_categorical = select_categorical_features(demo_viome_data_expanded, target_column, categorical_cols)
-    selected_numerical = select_numerical_features(demo_viome_data_expanded, target_column, numerical_cols)
-    selected_viome = select_numerical_features(demo_viome_data_expanded, target_column, viome_features.columns.tolist())
+    # Load saved preprocessing information for test data
+    if is_test:
+        print("\n\nmeow\n\n")
+        with open(os.path.join(save_dir, "preprocessing_params.pkl"), "rb") as file:
+            preprocessing_params = pickle.load(file)
+        
+        selected_numerical = preprocessing_params['selected_numerical']
+        selected_viome = preprocessing_params['selected_viome']
+        selected_categorical = preprocessing_params['selected_categorical']
+        preprocessor = preprocessing_params['preprocessor']
+        pca_features = preprocessing_params['pca_features']
+        pca = preprocessing_params['pca']
+        scaler = preprocessing_params['scaler']
 
-    unselected_numerical = [col for col in numerical_cols if col not in selected_numerical]
-    unselected_viome = [col for col in viome_features.columns if col not in selected_viome]
+        print(selected_numerical)
+        print(selected_categorical)
+        print(selected_viome)
+        print(pca_features)
+
+
+        scaled_data = scaler.fit_transform(demo_viome_data_expanded[pca_features])
+        pca_data = pca.fit_transform(scaled_data)
+        pca_columns = [f"PCA_{i+1}" for i in range(pca_data.shape[1])]
+        pca_df = pd.DataFrame(pca_data, columns=pca_columns, index=demo_viome_data.index)
+
+
+        print("pca col = ", pca_columns)
+    else:
+        # Training phase
+        os.makedirs(save_dir, exist_ok=True)
+
+        # Perform feature selection
+        target_column = 'Lunch Calories'
+        selected_categorical = select_categorical_features(demo_viome_data_expanded, target_column, categorical_cols)
+        selected_numerical = select_numerical_features(demo_viome_data_expanded, target_column, numerical_cols)
+        selected_viome = select_numerical_features(demo_viome_data_expanded, target_column, viome_features.columns.tolist())
+
+        unselected_numerical = [col for col in numerical_cols if col not in selected_numerical]
+        unselected_viome = [col for col in viome_features.columns if col not in selected_viome]
+        
+        # Apply PCA to unselected features
+        pca_df, pca, scaler = apply_pca(demo_viome_data_expanded, unselected_numerical, unselected_viome, explained_variance=0.95, save_plots=True, plot_dir="../results/")
+
+        # Keep the categorical features since gender, race and diabetes information are relevant to lunch calories from domain knowledge
+        if not selected_categorical:
+            selected_categorical = categorical_cols
+
+        # Preprocessing pipelines
+        categorical_pipeline = Pipeline(steps=[
+            ('imputer', SimpleImputer(strategy='most_frequent')),
+            ('onehot', OneHotEncoder(handle_unknown='ignore'))
+        ])
+        
+        numerical_pipeline = Pipeline(steps=[
+            ('imputer', SimpleImputer(strategy='mean')),
+            ('scaler', StandardScaler())
+        ])
+        
+        # Combine pipelines
+        preprocessor = ColumnTransformer(
+            transformers=[
+                ('num', numerical_pipeline, selected_numerical + selected_viome),
+                ('cat', categorical_pipeline, selected_categorical)
+            ]
+        )
+
+        # Save preprocessing parameters
+        preprocessing_params = {
+            'selected_numerical': selected_numerical,
+            'selected_viome': selected_viome,
+            'selected_categorical': selected_categorical,
+            'preprocessor': preprocessor,
+            'pca_features': unselected_numerical + unselected_viome,
+            'pca': pca,
+            'scaler': scaler
+        }
+        with open(os.path.join(save_dir, "preprocessing_params.pkl"), "wb") as file:
+            pickle.dump(preprocessing_params, file)
     
-    # Apply PCA to unselected features
-    pca_df = apply_pca(demo_viome_data_expanded, unselected_numerical, unselected_viome, explained_variance=0.95, save_plots=True, plot_dir="../results/")
 
-    # Keep the categorical features since gender, race and diabetes information are relevant to lunch calories from domain knowledge
-    if not selected_categorical:
-        selected_categorical = categorical_cols
-
-    # Preprocessing pipelines
-    categorical_pipeline = Pipeline(steps=[
-        ('imputer', SimpleImputer(strategy='most_frequent')),
-        ('onehot', OneHotEncoder(handle_unknown='ignore'))
-    ])
-    
-    numerical_pipeline = Pipeline(steps=[
-        ('imputer', SimpleImputer(strategy='mean')),
-        ('scaler', StandardScaler())
-    ])
-    
-    # Combine pipelines
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('num', numerical_pipeline, selected_numerical + selected_viome),
-            ('cat', categorical_pipeline, selected_categorical)
-        ]
-    )
-    
     # Apply transformations
     filtered_data = demo_viome_data_expanded[selected_numerical + selected_viome + selected_categorical]
     processed_features = preprocessor.fit_transform(filtered_data)
@@ -313,7 +359,7 @@ def select_numerical_features(demo_viome_data, target_column, numerical_cols, co
     print("\n\n selected features num = \n\n", selected_features)
     return selected_features
 
-def apply_pca(demo_viome_data, unselected_numerical, unselected_viome, explained_variance=0.95, save_plots=False, plot_dir="plots"):
+def apply_pca(demo_viome_data, unselected_numerical, unselected_viome, is_test=False, explained_variance=0.95, save_plots=False, plot_dir="plots", random_state=42):
     """
     Apply PCA to unselected numerical and Viome features and plot explained variance.
 
@@ -324,12 +370,11 @@ def apply_pca(demo_viome_data, unselected_numerical, unselected_viome, explained
         explained_variance (float): Desired cumulative explained variance for PCA.
         save_plots (bool): Whether to save plots to a directory.
         plot_dir (str): Directory to save plots.
+        random_state (int): Random state for PCA to ensure deterministic results.
 
     Returns:
         pd.DataFrame: PCA-transformed features as a DataFrame.
     """
-    import os
-
     # Combine unselected numerical and Viome features
     pca_features = unselected_numerical + unselected_viome
 
@@ -338,7 +383,7 @@ def apply_pca(demo_viome_data, unselected_numerical, unselected_viome, explained
     scaled_data = scaler.fit_transform(demo_viome_data[pca_features])
 
     # Apply PCA to determine the number of components for the desired explained variance
-    pca_temp = PCA()
+    pca_temp = PCA(random_state=random_state)
     pca_temp.fit(scaled_data)
     cumulative_variance = pca_temp.explained_variance_ratio_.cumsum()
     n_components = next(i for i, ratio in enumerate(cumulative_variance) if ratio >= explained_variance) + 1
@@ -370,11 +415,11 @@ def apply_pca(demo_viome_data, unselected_numerical, unselected_viome, explained
 
     print("\n\nn componenet = ", n_components)
     # Apply PCA with the determined number of components
-    pca = PCA(n_components=n_components)
+    pca = PCA(n_components=n_components, random_state=random_state)
     pca_data = pca.fit_transform(scaled_data)
 
     # Create DataFrame for PCA-transformed features
     pca_columns = [f"PCA_{i+1}" for i in range(pca_data.shape[1])]
     pca_df = pd.DataFrame(pca_data, columns=pca_columns, index=demo_viome_data.index)
 
-    return pca_df
+    return pca_df, pca, scaler

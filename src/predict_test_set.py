@@ -50,8 +50,8 @@ if __name__ == "__main__":
     print("Test DataLoader created successfully.")
 
     # Step 2: Load the trained model
-    model = MultimodalModel(image_size=(64, 64, 3), cgm_size=16, demo_size=41)
-    model.load_state_dict(torch.load("../results/final_multimodal_model.pth", map_location='cpu'))
+    model = MultimodalModel(image_size=(64, 64, 3), cgm_size=16, demo_size=31)
+    model.load_state_dict(torch.load("../results/multimodal_model.pth", map_location='cpu'))
     print("Trained model loaded successfully.")
 
     # Step 3: Predict labels for the test set

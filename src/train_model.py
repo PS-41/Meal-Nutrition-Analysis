@@ -46,7 +46,7 @@ if __name__ == "__main__":
     model = MultimodalModel(
                 image_size=(64, 64, 3),
                 cgm_size=16,
-                demo_size=41,
+                demo_size=31,
                 dropout_rate=best_hyperparameters['dropout_rate'],
                 cnn_filters=best_hyperparameters['cnn_filters'],
                 lstm_hidden_size=best_hyperparameters['lstm_hidden_size'],

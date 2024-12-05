@@ -19,7 +19,7 @@ class MultimodalDataset(Dataset):
         self.images_breakfast = preprocess_images(merged_data["Image Before Breakfast"])
         self.images_lunch = preprocess_images(merged_data["Image Before Lunch"])
         self.cgm_data = preprocess_cgm(merged_data["CGM Data"])
-        self.demo_viome_data = preprocess_demo_viome(merged_data)
+        self.demo_viome_data = preprocess_demo_viome(merged_data, is_test=is_test)
         self.is_test = is_test  # Whether this is a test set
 
         if not is_test:
@@ -65,7 +65,13 @@ if __name__ == "__main__":
     viome_path = "../data/demo_viome_train.csv"
     label_path = "../data/label_train.csv"
 
+    img_test_path = "../data/img_test.csv"
+    cgm_test_path = "../data/cgm_test.csv"
+    viome_test_path = "../data/demo_viome_test.csv"
+    label_test_path = "../data/label_test_breakfast_only.csv"
+
     # Step 1: Merge modalities
+    print("Processing training data...")
     merged_data = merge_modalities(img_path, cgm_path, viome_path, label_path)
 
     # Step 2: Prepare DataLoader
