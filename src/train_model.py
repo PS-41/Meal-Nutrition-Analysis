@@ -7,178 +7,68 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from model import MultimodalModel  # Import the model class
 from data_prep import MultimodalDataset  # Import the dataset class
-
-# Define RMSRE Loss Function
-class RMSRELoss(nn.Module):
-    def __init__(self):
-        super(RMSRELoss, self).__init__()
-
-    def forward(self, y_pred, y_true):
-        epsilon = 1e-8  # To prevent division by zero
-        relative_error = (y_true - y_pred) / (y_true + epsilon)
-        return torch.sqrt(torch.mean(relative_error**2))
-
-def train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs=20, device='cuda'):
-    model.to(device)
-    loss_history = []
-    val_loss_history = []
-
-    for epoch in range(num_epochs):
-        model.train()
-        running_loss = 0.0
-
-        for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}"):
-            image_breakfast = batch["image_breakfast"].permute(0, 3, 1, 2).to(device)
-            image_lunch = batch["image_lunch"].permute(0, 3, 1, 2).to(device)
-            cgm_data = batch["cgm_data"].to(device)
-            demo_data = batch["demo_viome_data"].to(device)
-            labels = batch["label"].to(device).float()
-
-            optimizer.zero_grad()
-            outputs = model(image_breakfast, image_lunch, cgm_data, demo_data).squeeze(1)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-
-            running_loss += loss.item() * len(labels)
-
-        epoch_loss = running_loss / len(train_loader.dataset)
-        loss_history.append(epoch_loss)
-
-        model.eval()
-        val_running_loss = 0.0
-        with torch.no_grad():
-            for batch in val_loader:
-                image_breakfast = batch["image_breakfast"].permute(0, 3, 1, 2).to(device)
-                image_lunch = batch["image_lunch"].permute(0, 3, 1, 2).to(device)
-                cgm_data = batch["cgm_data"].to(device)
-                demo_data = batch["demo_viome_data"].to(device)
-                labels = batch["label"].to(device).float()
-
-                outputs = model(image_breakfast, image_lunch, cgm_data, demo_data).squeeze(1)
-                val_loss = criterion(outputs, labels)
-                val_running_loss += val_loss.item() * len(labels)
-
-        val_epoch_loss = val_running_loss / len(val_loader.dataset)
-        val_loss_history.append(val_epoch_loss)
-
-        print(f"Epoch {epoch+1}/{num_epochs}, Train Loss: {epoch_loss:.4f}, Val Loss: {val_epoch_loss:.4f}")
-
-    return loss_history, val_loss_history
-
-def train_full_model(model, dataloader, criterion, optimizer, num_epochs=20, device='cuda'):
-    model.to(device)
-    model.train()
-    loss_history = []
-
-    for epoch in range(num_epochs):
-        running_loss = 0.0
-
-        for batch in tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs} (Full)"):
-            image_breakfast = batch["image_breakfast"].permute(0, 3, 1, 2).to(device)
-            image_lunch = batch["image_lunch"].permute(0, 3, 1, 2).to(device)
-            cgm_data = batch["cgm_data"].to(device)
-            demo_data = batch["demo_viome_data"].to(device)
-            labels = batch["label"].to(device).float()
-
-            optimizer.zero_grad()
-            outputs = model(image_breakfast, image_lunch, cgm_data, demo_data).squeeze(1)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-
-            running_loss += loss.item() * len(labels)
-
-        epoch_loss = running_loss / len(dataloader.dataset)
-        loss_history.append(epoch_loss)
-        print(f"Epoch {epoch+1}/{num_epochs}, Full Dataset Loss (RMSRE): {epoch_loss:.4f}")
-
-    return loss_history
-
-def cross_validate_model(dataset, num_epochs=20, batch_size=32, device='cuda', k_folds=5):
-    kfold = KFold(n_splits=k_folds, shuffle=True, random_state=42)
-    results = []
-
-    # K-Fold Cross Validation
-    for fold, (train_idx, val_idx) in enumerate(kfold.split(dataset)):
-        print(f"Fold {fold + 1}/{k_folds}")
-        
-        # Prepare data loaders for the current fold
-        train_sampler = SubsetRandomSampler(train_idx)
-        val_sampler = SubsetRandomSampler(val_idx)
-        train_loader = DataLoader(dataset, batch_size=batch_size, sampler=train_sampler)
-        val_loader = DataLoader(dataset, batch_size=batch_size, sampler=val_sampler)
-        
-        # Initialize model, loss function, and optimizer for this fold
-        model = MultimodalModel(image_size=(64, 64, 3), cgm_size=16, demo_size=41)
-        criterion = RMSRELoss()
-        optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
-        
-        # Train the model for the current fold and calculate loss
-        fold_train_loss, fold_val_loss = train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs, device)
-
-        # After training, collect the results (e.g., train loss and validation loss for each fold)
-        results.append((fold_train_loss, fold_val_loss))
-
-        print(f"Completed Fold {fold + 1}/{k_folds}")
-
-    # Plot the final cross-validation result and save
-    plot_training_curve(fold_train_loss, fold_val_loss, save_path="../results/cv_training_curve.png")
-
-    # Average the training and validation loss across all folds
-    avg_train_loss = torch.mean(torch.tensor([x[0][-1] for x in results]), dim=0)
-    avg_val_loss = torch.mean(torch.tensor([x[1][-1] for x in results]), dim=0)
-
-    print(f"Average training loss across all {k_folds} folds: {avg_train_loss:.4f}")
-    print(f"Average validation loss across all {k_folds} folds: {avg_val_loss:.4f}")
-
-    return avg_train_loss, avg_val_loss
-
-def plot_training_curve(train_loss, val_loss, save_path=None):
-    plt.figure(figsize=(10, 6))
-    plt.plot(range(1, len(train_loss) + 1), train_loss, marker='o', label="Train Loss")
-    plt.plot(range(1, len(val_loss) + 1), val_loss, marker='o', label="Validation Loss")
-    plt.xlabel("Epochs")
-    plt.ylabel("RMSRE Loss")
-    plt.title("Training and Validation Curve")
-    plt.legend()
-    plt.grid(True)
-    if save_path:
-        plt.savefig(save_path)
-    plt.show()
+from model_training_utility import train_full_model, k_fold_cross_validation, plot_multiple_training_curves
+import os
 
 if __name__ == "__main__":
+    # Load the dataset
     metadata = torch.load("../data/dataloader_metadata.pth")
     dataset = metadata["dataset"]
-    batch_size = metadata["batch_size"]
 
-    # val_split = 0.2
-    # indices = list(range(len(dataset)))
-    # train_indices, val_indices = train_test_split(indices, test_size=val_split, random_state=42)
+    # Load the best hyperparameters
+    best_hyperparameters_path = "../results/best_hyperparameters.pth"
+    if not os.path.exists(best_hyperparameters_path):
+        raise FileNotFoundError(f"\nBest hyperparameters file not found at {best_hyperparameters_path}. Please run tune_hyperparameters.py first.")
 
-    # train_loader = DataLoader(dataset, batch_size=batch_size, sampler=SubsetRandomSampler(train_indices))
-    # val_loader = DataLoader(dataset, batch_size=batch_size, sampler=SubsetRandomSampler(val_indices))
-    # print("Train and Validation DataLoaders created successfully.")
+    best_hyperparameters = torch.load(best_hyperparameters_path)
+    print(f"Best Hyperparameters Loaded: {best_hyperparameters}")
 
-    # model = MultimodalModel(image_size=(64, 64, 3), cgm_size=16, demo_size=41)
-    # criterion = RMSRELoss()
-    # optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
-
+    device = "cuda" if torch.cuda.is_available() else "cpu"
     num_epochs = 20
-    device = 'cpu'
-    # train_loss, val_loss = train_model(model, train_loader, val_loader, criterion, optimizer, num_epochs=num_epochs, device=device)
-    avg_train_loss, avg_val_loss = cross_validate_model(dataset, num_epochs=num_epochs, batch_size=batch_size, device=device, k_folds=5)
+    k_folds = 5
 
-    # plot_training_curve(train_loss, val_loss, save_path="../results/training_curve.png")
+    # Perform K-Fold Cross-Validation using the best hyperparameters
+    print("Starting K-Fold Cross-Validation...")
+    fold_results = k_fold_cross_validation(
+            dataset=dataset,
+            hyperparams=best_hyperparameters,
+            num_epochs=num_epochs,
+            k_folds=k_folds,
+            device=device
+        )
 
-    # Hyperparameter tuning
+
+    # Plot the training and validation loss for each fold
+    plot_multiple_training_curves(fold_results, save_path="../results/combined_training_curves.png")
+
+    # Train the final model on the full dataset
+    print("Training on the full dataset with the best hyperparameters...")
+    model = MultimodalModel(
+                image_size=(64, 64, 3),
+                cgm_size=16,
+                demo_size=41,
+                dropout_rate=best_hyperparameters['dropout_rate'],
+                cnn_filters=best_hyperparameters['cnn_filters'],
+                lstm_hidden_size=best_hyperparameters['lstm_hidden_size'],
+                num_lstm_layers=best_hyperparameters['num_lstm_layers']
+            )
+    if best_hyperparameters['optimizer'] == 'Adam':
+        optimizer = optim.Adam(model.parameters(), lr=best_hyperparameters['learning_rate'], weight_decay=best_hyperparameters['weight_decay'])
+    elif best_hyperparameters['optimizer'] == 'SGD':
+        optimizer = optim.SGD(model.parameters(), lr=best_hyperparameters['learning_rate'], momentum=0.9, weight_decay=best_hyperparameters['weight_decay'])
+    else:
+        optimizer = optim.RMSprop(model.parameters(), lr=best_hyperparameters['learning_rate'], weight_decay=best_hyperparameters['weight_decay'])
     
-    print("Training on the full dataset now...")
-    model = MultimodalModel(image_size=(64, 64, 3), cgm_size=16, demo_size=41)
-    criterion = RMSRELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001, weight_decay=1e-5)
-    full_loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    full_loss_history = train_full_model(model, full_loader, criterion, optimizer, num_epochs=num_epochs, device=device)
+    full_loader = DataLoader(dataset, batch_size=best_hyperparameters['batch_size'], shuffle=True)
 
-    torch.save(model.state_dict(), "../results/final_multimodal_model.pth")
-    print("Model training on full dataset complete and saved.")
+    train_full_model(
+        model=model,
+        dataloader=full_loader,
+        optimizer=optimizer,
+        num_epochs=num_epochs,
+        device=device,
+    )
+
+    # Save the final trained model
+    torch.save(model.state_dict(), "../results/multimodal_model.pth")
+    print("Final model trained and saved.")

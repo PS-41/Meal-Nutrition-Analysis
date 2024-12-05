@@ -3,25 +3,26 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 class MultimodalModel(nn.Module):
-    def __init__(self, image_size=(64, 64, 3), cgm_size=16, demo_size=52, dropout_rate=0.5):
+    def __init__(self, image_size=(64, 64, 3), cgm_size=16, demo_size=52, 
+                 dropout_rate=0.5, cnn_filters=(16, 32), lstm_hidden_size=64, num_lstm_layers=1):
         super().__init__()
 
         # Image branch (CNN)
         self.cnn = nn.Sequential(
-            nn.Conv2d(3, 16, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(3, cnn_filters[0], kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2),
-            nn.Conv2d(16, 32, kernel_size=3, stride=1, padding=1),
+            nn.Conv2d(cnn_filters[0], cnn_filters[1], kernel_size=3, stride=1, padding=1),
             nn.ReLU(),
             nn.MaxPool2d(kernel_size=2, stride=2),
             nn.Flatten(),
-            nn.Linear(32 * (image_size[0] // 4) * (image_size[1] // 4), 128),
+            nn.Linear(cnn_filters[1] * (image_size[0] // 4) * (image_size[1] // 4), 128),
             nn.ReLU()
         )
 
         # Time-series branch (LSTM)
-        self.lstm = nn.LSTM(input_size=1, hidden_size=64, num_layers=1, batch_first=True)
-        self.lstm_fc = nn.Linear(64 * cgm_size, 128)
+        self.lstm = nn.LSTM(input_size=1, hidden_size=lstm_hidden_size, num_layers=num_lstm_layers, batch_first=True)
+        self.lstm_fc = nn.Linear(lstm_hidden_size * cgm_size, 128)
 
         # Demographics branch (Feed-forward NN)
         self.demo_fc = nn.Sequential(
