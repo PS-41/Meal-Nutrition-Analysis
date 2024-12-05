@@ -5,12 +5,14 @@ from ast import literal_eval
 import numpy as np
 from torchvision import transforms
 from PIL import Image
-
+import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
-from sklearn.preprocessing import OneHotEncoder, StandardScaler
+from sklearn.decomposition import PCA
+from sklearn.preprocessing import OneHotEncoder, StandardScaler, LabelEncoder
 from sklearn.compose import ColumnTransformer
+from sklearn.feature_selection import chi2
 
 def merge_modalities(img_path, cgm_path, viome_path, label_path):
     """
@@ -144,6 +146,10 @@ def preprocess_demo_viome(demo_viome_data):
     # Define columns
     categorical_cols = ['Gender', 'Race', 'Diabetes Status']
     numerical_cols = [
+        'Age', 'Weight', 'Height', 'BMI', 'A1C', 
+        'Baseline Fasting Glucose', 'Insulin', 'Triglycerides', 
+        'Cholesterol', 'HDL', 'Non-HDL', 'LDL', 'VLDL', 
+        'CHO/HDL Ratio', 'HOMA-IR',
         'Breakfast Time', 'Lunch Time', 
         'Breakfast Calories', 'Breakfast Carbs', 
         'Breakfast Fat', 'Breakfast Protein'
@@ -181,6 +187,22 @@ def preprocess_demo_viome(demo_viome_data):
     demo_viome_data_expanded = pd.concat([demo_viome_data, viome_features], axis=1)
     demo_viome_data_expanded.drop(columns=[microbiome_col, 'Subject ID'], inplace=True)
 
+    # Perform feature selection
+    target_column = 'Lunch Calories'
+    selected_categorical = select_categorical_features(demo_viome_data_expanded, target_column, categorical_cols)
+    selected_numerical = select_numerical_features(demo_viome_data_expanded, target_column, numerical_cols)
+    selected_viome = select_numerical_features(demo_viome_data_expanded, target_column, viome_features.columns.tolist())
+
+    unselected_numerical = [col for col in numerical_cols if col not in selected_numerical]
+    unselected_viome = [col for col in viome_features.columns if col not in selected_viome]
+    
+    # Apply PCA to unselected features
+    pca_df = apply_pca(demo_viome_data_expanded, unselected_numerical, unselected_viome, explained_variance=0.95, save_plots=True, plot_dir="../results/")
+
+    # Keep the categorical features since gender, race and diabetes information are relevant to lunch calories from domain knowledge
+    if not selected_categorical:
+        selected_categorical = categorical_cols
+
     # Preprocessing pipelines
     categorical_pipeline = Pipeline(steps=[
         ('imputer', SimpleImputer(strategy='most_frequent')),
@@ -195,19 +217,164 @@ def preprocess_demo_viome(demo_viome_data):
     # Combine pipelines
     preprocessor = ColumnTransformer(
         transformers=[
-            ('num', numerical_pipeline, numerical_cols + viome_features.columns.tolist()),
-            ('cat', categorical_pipeline, categorical_cols)
+            ('num', numerical_pipeline, selected_numerical + selected_viome),
+            ('cat', categorical_pipeline, selected_categorical)
         ]
     )
     
     # Apply transformations
-    processed_features = preprocessor.fit_transform(demo_viome_data_expanded)
-    
+    filtered_data = demo_viome_data_expanded[selected_numerical + selected_viome + selected_categorical]
+    processed_features = preprocessor.fit_transform(filtered_data)
+
     # Convert to DataFrame
     processed_feature_names = (
-        numerical_cols + viome_features.columns.tolist() +
-        list(preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names_out(categorical_cols))
+        selected_numerical + selected_viome +
+        list(preprocessor.named_transformers_['cat'].named_steps['onehot'].get_feature_names_out(selected_categorical))
     )
+
     processed_df = pd.DataFrame(processed_features, columns=processed_feature_names)
+
+    # Combine selected features with PCA-transformed features
+    final_features_df = pd.concat([processed_df.reset_index(drop=True), pca_df.reset_index(drop=True)], axis=1)
     
-    return processed_df
+    return final_features_df
+
+def select_categorical_features(demo_viome_data, target_column, categorical_cols, p_threshold=0.05):
+    """
+    Select relevant categorical features using the chi-square test or mutual information.
+
+    Parameters:
+        demo_viome_data (pd.DataFrame): The dataset containing categorical features.
+        target_column (str): The name of the target column.
+        categorical_cols (list): List of categorical columns to evaluate.
+        p_threshold (float): Significance level for chi-square feature selection.
+
+    Returns:
+        list: Selected categorical feature names.
+    """
+    from sklearn.feature_selection import chi2, mutual_info_classif
+    from sklearn.preprocessing import LabelEncoder
+
+    # Encode categorical features
+    encoded_data = demo_viome_data[categorical_cols].apply(LabelEncoder().fit_transform)
+
+    # Convert the target to categorical if necessary
+    target = demo_viome_data[target_column]
+    if not pd.api.types.is_categorical_dtype(target):
+        # Create bins for the target if numerical
+        target = pd.cut(target, bins=3, labels=[0, 1, 2])  # 3 bins (adjust as needed)
+
+    # Perform chi-square test
+    chi_scores, p_values = chi2(encoded_data, target)
+
+    # Select features with significant p-values
+    selected_features = [
+        feature for feature, p_val in zip(categorical_cols, p_values) if p_val < p_threshold
+    ]
+    print("p = ", p_values)
+
+    # Fallback to mutual information if no features selected
+    if not selected_features:
+        print("Fallback to mutual information for categorical features.")
+        mi_scores = mutual_info_classif(encoded_data, target)
+        mi_df = pd.DataFrame({
+            "Feature": categorical_cols,
+            "Mutual_Info_Score": mi_scores
+        }).sort_values(by="Mutual_Info_Score", ascending=False)
+        selected_features = mi_df[mi_df["Mutual_Info_Score"] > 0.01]["Feature"].tolist()
+        print(mi_df)
+    print("\n\n selected features num = \n\n", selected_features)
+    
+
+    return selected_features
+
+
+def select_numerical_features(demo_viome_data, target_column, numerical_cols, corr_threshold=0.1):
+    """
+    Select relevant numerical features based on correlation with the target variable.
+
+    Parameters:
+        demo_viome_data (pd.DataFrame): The dataset containing numerical features.
+        target_column (str): The name of the target column.
+        numerical_cols (list): List of numerical columns to evaluate.
+        corr_threshold (float): Absolute correlation threshold for feature selection.
+
+    Returns:
+        list: Selected numerical feature names.
+    """
+    # Compute correlation
+    correlations = demo_viome_data[numerical_cols].corrwith(demo_viome_data[target_column])
+
+    # Filter features based on correlation threshold
+    selected_features = correlations[abs(correlations) > corr_threshold].index.tolist()
+
+    print(correlations)
+
+    print("\n\n selected features num = \n\n", selected_features)
+    return selected_features
+
+def apply_pca(demo_viome_data, unselected_numerical, unselected_viome, explained_variance=0.95, save_plots=False, plot_dir="plots"):
+    """
+    Apply PCA to unselected numerical and Viome features and plot explained variance.
+
+    Parameters:
+        demo_viome_data (pd.DataFrame): The demographic and microbiome data.
+        unselected_numerical (list): List of unselected numerical columns.
+        unselected_viome (list): List of unselected Viome columns.
+        explained_variance (float): Desired cumulative explained variance for PCA.
+        save_plots (bool): Whether to save plots to a directory.
+        plot_dir (str): Directory to save plots.
+
+    Returns:
+        pd.DataFrame: PCA-transformed features as a DataFrame.
+    """
+    import os
+
+    # Combine unselected numerical and Viome features
+    pca_features = unselected_numerical + unselected_viome
+
+    # Standardize the features
+    scaler = StandardScaler()
+    scaled_data = scaler.fit_transform(demo_viome_data[pca_features])
+
+    # Apply PCA to determine the number of components for the desired explained variance
+    pca_temp = PCA()
+    pca_temp.fit(scaled_data)
+    cumulative_variance = pca_temp.explained_variance_ratio_.cumsum()
+    n_components = next(i for i, ratio in enumerate(cumulative_variance) if ratio >= explained_variance) + 1
+
+    # Plot explained variance ratio
+    plt.figure(figsize=(8, 5))
+    plt.plot(range(1, len(pca_temp.explained_variance_ratio_) + 1), pca_temp.explained_variance_ratio_, marker='o', linestyle='--')
+    plt.xlabel('Number of Components')
+    plt.ylabel('Explained Variance Ratio')
+    plt.title('PCA Explained Variance Ratio')
+    plt.grid()
+    if save_plots:
+        os.makedirs(plot_dir, exist_ok=True)
+        plt.savefig(os.path.join(plot_dir, "explained_variance_ratio.png"))
+    plt.show()
+
+    # Plot cumulative explained variance
+    plt.figure(figsize=(8, 5))
+    plt.plot(range(1, len(cumulative_variance) + 1), cumulative_variance, marker='o', linestyle='--')
+    plt.axhline(y=explained_variance, color='r', linestyle='--', label=f'{explained_variance * 100:.0f}% Variance Explained')
+    plt.xlabel('Number of Components')
+    plt.ylabel('Cumulative Explained Variance')
+    plt.title('PCA Cumulative Explained Variance')
+    plt.legend()
+    plt.grid()
+    if save_plots:
+        plt.savefig(os.path.join(plot_dir, "cumulative_explained_variance.png"))
+    plt.show()
+
+    print("\n\nn componenet = ", n_components)
+    # Apply PCA with the determined number of components
+    pca = PCA(n_components=n_components)
+    pca_data = pca.fit_transform(scaled_data)
+
+    # Create DataFrame for PCA-transformed features
+    pca_columns = [f"PCA_{i+1}" for i in range(pca_data.shape[1])]
+    pca_df = pd.DataFrame(pca_data, columns=pca_columns, index=demo_viome_data.index)
+
+    return pca_df
