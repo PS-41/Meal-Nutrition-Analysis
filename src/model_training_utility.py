@@ -123,7 +123,6 @@ def k_fold_cross_validation(dataset, hyperparams, num_epochs, k_folds, device):
             model, train_loader, val_loader, optimizer, criterion, num_epochs, device
         )
         fold_results.append((train_loss, val_loss))
-        break
 
     return fold_results
 
