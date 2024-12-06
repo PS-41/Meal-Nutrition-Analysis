@@ -5,8 +5,8 @@ from torch.utils.data import DataLoader, SubsetRandomSampler
 from sklearn.model_selection import train_test_split, KFold
 from tqdm import tqdm
 import matplotlib.pyplot as plt
-from model import MultimodalModel  # Import the model class
-from data_prep import MultimodalDataset  # Import the dataset class
+from model import MultimodalModel
+from data_prep import MultimodalDataset
 from model_training_utility import train_full_model, k_fold_cross_validation, plot_multiple_training_curves, plot_training_curve
 import os
 
@@ -28,7 +28,7 @@ if __name__ == "__main__":
     num_epochs = 20
     k_folds = 5
 
-    # Perform K-Fold Cross-Validation using the best hyperparameters
+    # K-Fold Cross-Validation using the best hyperparameters
     print("Starting K-Fold Cross-Validation...")
     fold_results = k_fold_cross_validation(
             dataset=dataset,
@@ -73,6 +73,5 @@ if __name__ == "__main__":
     plot_training_curve(full_train_loss, save_path="../results/full_training_curve.png")
 
     # Save the final trained model
-    # torch.save(model.state_dict(), "../results/multimodal_model.pth")
     torch.save(model, "../results/trained_multimodal_model.pth")
     print("Final model trained and saved.")

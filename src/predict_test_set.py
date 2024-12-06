@@ -23,26 +23,23 @@ def predict_test_set(model, test_loader, device='cpu'):
 
     with torch.no_grad():
         for batch in test_loader:
-            # Move data to the device
             image_breakfast = batch["image_breakfast"].permute(0, 3, 1, 2).to(device)
             image_lunch = batch["image_lunch"].permute(0, 3, 1, 2).to(device)
             cgm_data = batch["cgm_data"].to(device)
             demo_data = batch["demo_viome_data"].to(device)
 
-            # Forward pass
             outputs = model(image_breakfast, image_lunch, cgm_data, demo_data).squeeze(1)
-            predictions.extend(outputs.cpu().numpy())  # Collect predictions
+            predictions.extend(outputs.cpu().numpy())
 
     return predictions
 
 if __name__ == "__main__":
-    # Paths to the CSV files for the test set
     img_test_path = "../data/img_test.csv"
     cgm_test_path = "../data/cgm_test.csv"
     viome_test_path = "../data/demo_viome_test.csv"
-    label_test_path = "../data/label_test_breakfast_only.csv"  # Optional, if needed for row_id
+    label_test_path = "../data/label_test_breakfast_only.csv"
 
-    # Step 1: Merge modalities and prepare the test set DataLoader
+    # Merge modalities and prepare the test set DataLoader
     test_merged_data = merge_modalities(img_test_path, cgm_test_path, viome_test_path, label_test_path)
     test_dataset = MultimodalDataset(test_merged_data, True)
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
@@ -51,18 +48,15 @@ if __name__ == "__main__":
 
     print("Test DataLoader created successfully.")
 
-    # Step 2: Load the trained model
-    # model = MultimodalModel(image_size=(64, 64, 3), cgm_size=16, demo_size=demo_size)
-    # model.load_state_dict(torch.load("../results/multimodal_model.pth", map_location='cpu'))
+    # Load the trained model
     model = torch.load("../results/trained_multimodal_model.pth", map_location='cpu')
     print("Trained model loaded successfully.")
 
-    # Step 3: Predict labels for the test set
+    # Predict labels for the test set
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     predictions = predict_test_set(model, test_loader, device=device)
 
-    # Step 4: Prepare the submission file
-    row_ids = test_merged_data.index  # Use the index as row_id
+    row_ids = test_merged_data.index
     submission_df = pd.DataFrame({
         "row_id": row_ids,
         "label": predictions

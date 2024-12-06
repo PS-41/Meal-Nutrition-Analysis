@@ -57,21 +57,19 @@ def preprocess_images(image_column, image_size=(64, 64)):
 
     for image in image_column:
         if not image or image == "[]":
-            # Handle missing images by adding a placeholder
+            # placeholder
             processed_images.append(placeholder_image)
         else:
             try:
-                # Convert string representation of the image to a Python list
                 if isinstance(image, str):
                     image = ast.literal_eval(image)
                 
-                # Convert the image to a numpy array if not already
                 image_array = np.array(image, dtype=np.float32)
                 
                 # Normalize pixel values to [0, 1]
                 image_array /= 255.0
                 
-                # Resize the image to the desired size (if necessary)
+                # Resize the image
                 if image_array.shape[:2] != image_size:
                     from skimage.transform import resize
                     image_array = resize(image_array, image_size, anti_aliasing=True)
@@ -79,7 +77,6 @@ def preprocess_images(image_column, image_size=(64, 64)):
                 processed_images.append(image_array)
             except Exception as e:
                 print(f"Error processing image: {e}")
-                # Append placeholder if an error occurs
                 processed_images.append(placeholder_image)
     
     return np.array(processed_images, dtype=np.float32)
@@ -98,28 +95,25 @@ def preprocess_cgm(cgm_column, resample_freq='30T', max_length=16):
     """
     processed_cgm = []
     for row in cgm_column:
-        if not row or row == []:  # Handle missing or empty CGM data
+        if not row or row == []:
             # Placeholder for missing CGM data
             placeholder = [0] * max_length
             processed_cgm.append(placeholder)
             continue
         
-        # Confirm the data is already in list format
         if isinstance(row, str):
-            # Parse string representation into list of tuples
             cgm_data = literal_eval(row)
         else:
-            cgm_data = row  # Use the row as-is if it's already a list of tuples
+            cgm_data = row
         
-        # Extract time and glucose values
         times, glucose_values = zip(*cgm_data)
         times = pd.to_datetime(times)
         glucose_values = np.array(glucose_values, dtype=np.float32)
         
-        # Create a DataFrame for resampling
+        # DataFrame for resampling
         df = pd.DataFrame({'Glucose': glucose_values}, index=times)
         
-        # Resample to the desired frequency and interpolate missing values
+        # Resample and interpolate missing values
         df = df.resample(resample_freq).mean().interpolate()
         
         # Truncate or pad to ensure fixed length
@@ -155,12 +149,11 @@ def preprocess_demo_viome(demo_viome_data, is_test=False, save_dir="../results/"
         'Breakfast Calories', 'Breakfast Carbs', 
         'Breakfast Fat', 'Breakfast Protein'
     ]
-    microbiome_col = 'Viome'  # Explicitly handle the Viome column
+    microbiome_col = 'Viome'  # We explicitly handle the Viome column
 
     # Function to calculate the mean time (in minutes) for the same subject across all days
     def fill_time_with_subject_mean(row, time_col):
         if pd.isna(row[time_col]):
-            # Calculate the mean time for the same subject across all days
             subject_mean_time = demo_viome_data[
                 (demo_viome_data['Subject ID'] == row['Subject ID']) & demo_viome_data[time_col].notna()
             ][time_col].mean()
@@ -169,7 +162,6 @@ def preprocess_demo_viome(demo_viome_data, is_test=False, save_dir="../results/"
 
     # Handle time columns
     for time_col in ['Breakfast Time', 'Lunch Time']:
-        # Convert time to minutes past midnight, handling invalid entries
         demo_viome_data[time_col] = pd.to_datetime(
             demo_viome_data[time_col], errors='coerce', format='%Y-%m-%d %H:%M:%S'
         ).dt.hour * 60 + pd.to_datetime(demo_viome_data[time_col], errors='coerce').dt.minute
@@ -179,7 +171,7 @@ def preprocess_demo_viome(demo_viome_data, is_test=False, save_dir="../results/"
             lambda row: fill_time_with_subject_mean(row, time_col), axis=1
         )
     
-    # Expand the Viome column into separate numerical features
+        # Expand the Viome column into separate numerical features
         viome_features = demo_viome_data[microbiome_col].str.split(',', expand=True)
         viome_features.columns = [f'Viome_{i+1}' for i in range(viome_features.shape[1])]
         viome_features = viome_features.astype(float)  # Ensure numerical type
@@ -188,7 +180,7 @@ def preprocess_demo_viome(demo_viome_data, is_test=False, save_dir="../results/"
         demo_viome_data_expanded = pd.concat([demo_viome_data, viome_features], axis=1)
         demo_viome_data_expanded.drop(columns=[microbiome_col, 'Subject ID'], inplace=True)
 
-    # Load saved preprocessing information for test data
+    # Load saved preprocessing information for test data for correct use of PCA
     if is_test:
         with open(os.path.join(save_dir, "preprocessing_params.pkl"), "rb") as file:
             preprocessing_params = pickle.load(file)
@@ -201,8 +193,6 @@ def preprocess_demo_viome(demo_viome_data, is_test=False, save_dir="../results/"
         pca = preprocessing_params['pca']
         scaler = preprocessing_params['scaler']
 
-
-
         scaled_data = scaler.fit_transform(demo_viome_data_expanded[pca_features])
         pca_data = pca.fit_transform(scaled_data)
         pca_columns = [f"PCA_{i+1}" for i in range(pca_data.shape[1])]
@@ -210,7 +200,6 @@ def preprocess_demo_viome(demo_viome_data, is_test=False, save_dir="../results/"
 
 
     else:
-        # Training phase
         os.makedirs(save_dir, exist_ok=True)
 
         # Perform feature selection
@@ -298,11 +287,11 @@ def select_categorical_features(demo_viome_data, target_column, categorical_cols
     # Encode categorical features
     encoded_data = demo_viome_data[categorical_cols].apply(LabelEncoder().fit_transform)
 
-    # Convert the target to categorical if necessary
+    # Convert the target to categorical for comparing using chi squared
     target = demo_viome_data[target_column]
     if not pd.api.types.is_categorical_dtype(target):
         # Create bins for the target if numerical
-        target = pd.cut(target, bins=3, labels=[0, 1, 2])  # 3 bins (adjust as needed)
+        target = pd.cut(target, bins=3, labels=[0, 1, 2])  # 3 bins
 
     # Perform chi-square test
     chi_scores, p_values = chi2(encoded_data, target)
@@ -312,7 +301,7 @@ def select_categorical_features(demo_viome_data, target_column, categorical_cols
         feature for feature, p_val in zip(categorical_cols, p_values) if p_val < p_threshold
     ]
 
-    # Fallback to mutual information if no features selected
+    # We do mutual information if no features selected after chi squared test
     if not selected_features:
         mi_scores = mutual_info_classif(encoded_data, target)
         mi_df = pd.DataFrame({
@@ -320,7 +309,6 @@ def select_categorical_features(demo_viome_data, target_column, categorical_cols
             "Mutual_Info_Score": mi_scores
         }).sort_values(by="Mutual_Info_Score", ascending=False)
         selected_features = mi_df[mi_df["Mutual_Info_Score"] > 0.01]["Feature"].tolist()
-    
 
     return selected_features
 
@@ -404,7 +392,7 @@ def apply_pca(demo_viome_data, unselected_numerical, unselected_viome, is_test=F
     pca = PCA(n_components=n_components, random_state=random_state)
     pca_data = pca.fit_transform(scaled_data)
 
-    # Create DataFrame for PCA-transformed features
+    # DataFrame for PCA-transformed features
     pca_columns = [f"PCA_{i+1}" for i in range(pca_data.shape[1])]
     pca_df = pd.DataFrame(pca_data, columns=pca_columns, index=demo_viome_data.index)
 

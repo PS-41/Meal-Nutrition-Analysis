@@ -20,19 +20,19 @@ class MultimodalDataset(Dataset):
         self.images_lunch = preprocess_images(merged_data["Image Before Lunch"])
         self.cgm_data = preprocess_cgm(merged_data["CGM Data"])
         self.demo_viome_data = preprocess_demo_viome(merged_data, is_test=is_test)
-        self.is_test = is_test  # Whether this is a test set
+        self.is_test = is_test
 
         if not is_test:
-            # Target variable: Lunch Calories (only for training/validation)
+            # Target variable: Lunch Calories
             self.labels = merged_data["Lunch Calories"].values
         else:
-            self.labels = None  # No labels for the test set
+            self.labels = None
 
     def __len__(self):
         return len(self.cgm_data)
 
     def __getitem__(self, idx):
-        demo_viome_row = self.demo_viome_data.iloc[idx]  # Use .iloc for row indexing
+        demo_viome_row = self.demo_viome_data.iloc[idx]
         item = {
             "image_breakfast": torch.tensor(self.images_breakfast[idx], dtype=torch.float32),
             "image_lunch": torch.tensor(self.images_lunch[idx], dtype=torch.float32),
@@ -48,10 +48,10 @@ def prepare_dataloader(merged_data, batch_size=32):
     # Create dataset
     dataset = MultimodalDataset(merged_data)
 
-    # Save the dataset and batch size instead of the entire DataLoader
+    # Save the dataset and batch size
     torch.save({
-        "dataset": dataset,  # Save the dataset object
-        "batch_size": batch_size  # Save the batch size for reconstruction
+        "dataset": dataset,
+        "batch_size": batch_size
     }, "../data/dataloader_metadata.pth")
 
     print("Processed data saved at ../data/dataloader_metadata.pth")
@@ -67,21 +67,9 @@ if __name__ == "__main__":
     viome_path = "../data/demo_viome_train.csv"
     label_path = "../data/label_train.csv"
 
-    img_test_path = "../data/img_test.csv"
-    cgm_test_path = "../data/cgm_test.csv"
-    viome_test_path = "../data/demo_viome_test.csv"
-    label_test_path = "../data/label_test_breakfast_only.csv"
-
     # Merge modalities
     print("Processing training data...")
     merged_data = merge_modalities(img_path, cgm_path, viome_path, label_path)
 
     # Prepare DataLoader
     dataloader = prepare_dataloader(merged_data, batch_size=32)
-
-    # Verify DataLoader Keys
-    batch = next(iter(dataloader))  # Extract the first batch
-
-    # Verify Demographic and Microbiome Data
-    demo_viome_data_shape = batch["demo_viome_data"].shape
-    print(f"Actual Demo and Viome Columns: {demo_viome_data_shape[1]}")  # Compare count

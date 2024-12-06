@@ -28,10 +28,10 @@ class MultimodalModel(nn.Module):
         self.demo_fc = nn.Sequential(
             nn.Linear(demo_size, 64),
             nn.ReLU(),
-            nn.Dropout(dropout_rate),  # Dropout added here
+            nn.Dropout(dropout_rate),
             nn.Linear(64, 128),
             nn.ReLU(),
-            nn.Dropout(dropout_rate)  # Dropout added here
+            nn.Dropout(dropout_rate)
         )
 
         # Joint embedding and prediction
@@ -45,10 +45,10 @@ class MultimodalModel(nn.Module):
         # Image branch (process both breakfast and lunch images)
         img_b = self.cnn(image_breakfast)
         img_l = self.cnn(image_lunch)
-        img_features = img_b + img_l  # Combine image features (can experiment with concatenation later)
+        img_features = img_b + img_l  # Combine image features (might experiment with concatenation later)
 
         # Time-series branch
-        cgm_data = cgm_data.unsqueeze(-1)  # Add channel dimension for LSTM
+        cgm_data = cgm_data.unsqueeze(-1)
         lstm_out, _ = self.lstm(cgm_data)
         lstm_features = self.lstm_fc(lstm_out.reshape(lstm_out.size(0), -1))
 

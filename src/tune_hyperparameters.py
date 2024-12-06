@@ -14,9 +14,10 @@ def hyperparameter_tuning(dataset, hyperparameter_grid, num_epochs=20, k_folds=5
     Parameters:
         dataset: The dataset to use for cross-validation.
         hyperparameter_grid: A list of dictionaries, each containing a set of hyperparameters to test.
-        num_folds: Number of folds for cross-validation.
         num_epochs: Number of epochs to train each model.
+        k_folds: Number of folds for cross-validation.
         device: Device to use ('cuda' or 'cpu').
+        log_path: Path to save the optimal parameters obtained.
 
     Returns:
         dict: The best hyperparameter combination and its validation loss.
@@ -24,11 +25,11 @@ def hyperparameter_tuning(dataset, hyperparameter_grid, num_epochs=20, k_folds=5
     best_params = None
     best_val_loss = float("inf")
 
-    # Prepare CSV logging
+    # CSV Logging for all hyperparameters results
     with open(log_path, mode='w', newline='') as csvfile:
         fieldnames = list(hyperparameter_grid[0].keys()) + ['avg_train_loss', 'avg_val_loss']
         writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()  # Write the header row
+        writer.writeheader()  #header row
 
         for hyperparams in hyperparameter_grid:
             print(f"Testing hyperparameters: {hyperparams}")
@@ -41,16 +42,15 @@ def hyperparameter_tuning(dataset, hyperparameter_grid, num_epochs=20, k_folds=5
                 device=device
             )
 
-            # Calculate average training and validation losses
+            # Average training and validation losses
             avg_train_loss = torch.mean(torch.tensor([result[0][-1] for result in fold_results])).item()
             avg_val_loss = torch.mean(torch.tensor([result[1][-1] for result in fold_results])).item()
             print(f"Average Train Loss: {avg_train_loss:.4f}, Average Validation Loss: {avg_val_loss:.4f}")
 
-            # Log results to CSV
             row = {**hyperparams, 'avg_train_loss': avg_train_loss, 'avg_val_loss': avg_val_loss}
             writer.writerow(row)
 
-            # Update best hyperparameters if the validation loss improves
+            # Update best hyperparameters
             if avg_val_loss < best_val_loss:
                 best_val_loss = avg_val_loss
                 best_params = hyperparams
@@ -62,7 +62,7 @@ if __name__ == "__main__":
     metadata = torch.load("../data/dataloader_metadata.pth")
     dataset = metadata["dataset"]
 
-    # Step 2: Define hyperparameter grid
+    # Define hyperparameter grid
     hyperparameter_grid = [
         {
             'learning_rate': lr,

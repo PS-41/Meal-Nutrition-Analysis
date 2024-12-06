@@ -13,7 +13,7 @@ class RMSRELoss(torch.nn.Module):
         super(RMSRELoss, self).__init__()
 
     def forward(self, y_pred, y_true):
-        epsilon = 1e-8  # To prevent division by zero
+        epsilon = 1e-8
         relative_error = (y_true - y_pred) / (y_true + epsilon)
         return torch.sqrt(torch.mean(relative_error**2))
 
@@ -45,7 +45,6 @@ def train_model(model, train_loader, val_loader, optimizer, criterion=RMSRELoss(
         running_loss = 0.0
 
         for batch in tqdm(train_loader, desc=f"Epoch {epoch+1}/{num_epochs}", disable=tqdm_disable):
-            # Move data to the device
             image_breakfast = batch["image_breakfast"].permute(0, 3, 1, 2).to(device)
             image_lunch = batch["image_lunch"].permute(0, 3, 1, 2).to(device)
             cgm_data = batch["cgm_data"].to(device)
@@ -60,7 +59,6 @@ def train_model(model, train_loader, val_loader, optimizer, criterion=RMSRELoss(
 
             running_loss += loss.item() * len(labels)
 
-        # Log training loss
         epoch_loss = running_loss / len(train_loader.dataset)
         loss_history.append(epoch_loss)
 
@@ -69,7 +67,6 @@ def train_model(model, train_loader, val_loader, optimizer, criterion=RMSRELoss(
         val_running_loss = 0.0
         with torch.no_grad():
             for batch in val_loader:
-                # Move data to the device
                 image_breakfast = batch["image_breakfast"].permute(0, 3, 1, 2).to(device)
                 image_lunch = batch["image_lunch"].permute(0, 3, 1, 2).to(device)
                 cgm_data = batch["cgm_data"].to(device)
@@ -80,7 +77,6 @@ def train_model(model, train_loader, val_loader, optimizer, criterion=RMSRELoss(
                 val_loss = criterion(outputs, labels)
                 val_running_loss += val_loss.item() * len(labels)
 
-        # Log validation loss
         val_epoch_loss = val_running_loss / len(val_loader.dataset)
         val_loss_history.append(val_epoch_loss)
 
@@ -96,7 +92,7 @@ def k_fold_cross_validation(dataset, hyperparams, num_epochs, k_folds, device):
     """
     kfold = KFold(n_splits=k_folds, shuffle=True, random_state=42)
     fold_results = []
-    criterion = RMSRELoss()  # Fixed RMSRE Loss
+    criterion = RMSRELoss()
     demo_size = len(dataset.demo_viome_data.columns)
 
     for fold, (train_idx, val_idx) in enumerate(kfold.split(dataset)):
@@ -115,7 +111,6 @@ def k_fold_cross_validation(dataset, hyperparams, num_epochs, k_folds, device):
                 num_lstm_layers=hyperparams['num_lstm_layers']
             )
         
-        # Dynamically select optimizer
         if hyperparams['optimizer'] == 'Adam':
             optimizer = optim.Adam(model.parameters(), lr=hyperparams['learning_rate'], weight_decay=hyperparams['weight_decay'])
         elif hyperparams['optimizer'] == 'SGD':
@@ -128,6 +123,7 @@ def k_fold_cross_validation(dataset, hyperparams, num_epochs, k_folds, device):
             model, train_loader, val_loader, optimizer, criterion, num_epochs, device
         )
         fold_results.append((train_loss, val_loss))
+        break
 
     return fold_results
 
@@ -145,7 +141,6 @@ def train_full_model(model, dataloader, optimizer, criterion=RMSRELoss(), num_ep
         running_loss = 0.0
 
         for batch in tqdm(dataloader, desc=f"Epoch {epoch+1}/{num_epochs} (Full Training)", disable=tqdm_disable):
-            # Move data to the device
             image_breakfast = batch["image_breakfast"].permute(0, 3, 1, 2).to(device)
             image_lunch = batch["image_lunch"].permute(0, 3, 1, 2).to(device)
             cgm_data = batch["cgm_data"].to(device)
@@ -160,7 +155,6 @@ def train_full_model(model, dataloader, optimizer, criterion=RMSRELoss(), num_ep
 
             running_loss += loss.item() * len(labels)
 
-        # Log loss for the epoch
         epoch_loss = running_loss / len(dataloader.dataset)
         loss_history.append(epoch_loss)
         if (epoch + 1) % 10 == 0:
@@ -184,7 +178,6 @@ def plot_training_curve(train_loss, save_path=None):
     plt.legend()
     plt.grid(True)
     
-    # Save the plot if a save_path is provided
     if save_path:
         plt.savefig(save_path)
     
@@ -199,16 +192,13 @@ def plot_multiple_training_curves(fold_results, save_path=None):
       'train_loss' and 'val_loss' for each fold.
     - save_path (str, optional): Path to save the plot. If None, the plot will not be saved.
     """
-    # Determine number of folds and grid layout
     num_folds = len(fold_results)
-    cols = 3  # Maximum columns for better visualization
-    rows = (num_folds // cols) + (num_folds % cols > 0)  # Calculate rows dynamically
+    cols = 3
+    rows = (num_folds // cols) + (num_folds % cols > 0)
 
-    # Set up a figure with subplots
-    fig, axes = plt.subplots(nrows=rows, ncols=cols, figsize=(15, 5 * rows))  # Adjust size as needed
-    axes = axes.flatten()  # Flatten axes to make indexing easier
+    fig, axes = plt.subplots(nrows=rows, ncols=cols, figsize=(15, 5 * rows))
+    axes = axes.flatten()
 
-    # Loop through each fold result and plot on the respective subplot
     for fold_idx, (train_loss, val_loss) in enumerate(fold_results):
         ax = axes[fold_idx]
         ax.plot(range(1, len(train_loss) + 1), train_loss, marker='o', label="Train Loss")
@@ -223,10 +213,8 @@ def plot_multiple_training_curves(fold_results, save_path=None):
     for i in range(len(fold_results), len(axes)):
         fig.delaxes(axes[i])
 
-    # Adjust layout to avoid overlap
     plt.tight_layout()
 
-    # Save the combined figure with all the subplots
     if save_path:
         plt.savefig(save_path)
     plt.show()
