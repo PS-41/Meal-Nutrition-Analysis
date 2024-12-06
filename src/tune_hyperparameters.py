@@ -5,8 +5,9 @@ from model import MultimodalModel
 from data_prep import MultimodalDataset
 from preprocessing import merge_modalities
 import pandas as pd
+import csv
 
-def hyperparameter_tuning(dataset, hyperparameter_grid, num_epochs=20, k_folds=5, device='cpu'):
+def hyperparameter_tuning(dataset, hyperparameter_grid, num_epochs=20, k_folds=5, device='cuda', log_path="../results/hyperparameter_tuning_log.csv"):
     """
     Perform hyperparameter tuning using k-fold cross-validation.
 
@@ -23,23 +24,36 @@ def hyperparameter_tuning(dataset, hyperparameter_grid, num_epochs=20, k_folds=5
     best_params = None
     best_val_loss = float("inf")
 
-    for hyperparams in hyperparameter_grid:
-        print(f"Testing hyperparameters: {hyperparams}")
+    # Prepare CSV logging
+    with open(log_path, mode='w', newline='') as csvfile:
+        fieldnames = list(hyperparameter_grid[0].keys()) + ['avg_train_loss', 'avg_val_loss']
+        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+        writer.writeheader()  # Write the header row
 
-        fold_results = k_fold_cross_validation(
-            dataset=dataset,
-            hyperparams=hyperparams,
-            num_epochs=num_epochs,
-            k_folds=k_folds,
-            device=device
-        )
+        for hyperparams in hyperparameter_grid:
+            print(f"Testing hyperparameters: {hyperparams}")
 
-        avg_val_loss = torch.mean(torch.tensor([result[1][-1] for result in fold_results]))
-        print(f"Average Validation Loss: {avg_val_loss:.4f}")
+            fold_results = k_fold_cross_validation(
+                dataset=dataset,
+                hyperparams=hyperparams,
+                num_epochs=num_epochs,
+                k_folds=k_folds,
+                device=device
+            )
 
-        if avg_val_loss < best_val_loss:
-            best_val_loss = avg_val_loss
-            best_params = hyperparams
+            # Calculate average training and validation losses
+            avg_train_loss = torch.mean(torch.tensor([result[0][-1] for result in fold_results])).item()
+            avg_val_loss = torch.mean(torch.tensor([result[1][-1] for result in fold_results])).item()
+            print(f"Average Train Loss: {avg_train_loss:.4f}, Average Validation Loss: {avg_val_loss:.4f}")
+
+            # Log results to CSV
+            row = {**hyperparams, 'avg_train_loss': avg_train_loss, 'avg_val_loss': avg_val_loss}
+            writer.writerow(row)
+
+            # Update best hyperparameters if the validation loss improves
+            if avg_val_loss < best_val_loss:
+                best_val_loss = avg_val_loss
+                best_params = hyperparams
 
     return best_params, best_val_loss
 
@@ -62,7 +76,7 @@ if __name__ == "__main__":
         }
         for lr in [1e-3]
         for bs in [16]
-        for dr in [0.2]
+        for dr in [0.4]
         for cnn_filters in [(16, 32)]
         for lstm_hs in [64]
         for num_lstm_layers in [1]
@@ -81,4 +95,4 @@ if __name__ == "__main__":
 
     # Save the best parameters
     torch.save(best_params, "../results/best_hyperparameters.pth")
-    print("Best hyperparameters saved.")
+    print("Best hyperparameters saved at ../results/best_hyperparameters.pth")

@@ -54,6 +54,8 @@ def prepare_dataloader(merged_data, batch_size=32):
         "batch_size": batch_size  # Save the batch size for reconstruction
     }, "../data/dataloader_metadata.pth")
 
+    print("Processed data saved at ../data/dataloader_metadata.pth")
+
     # Create DataLoader
     dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
     return dataloader
@@ -70,47 +72,16 @@ if __name__ == "__main__":
     viome_test_path = "../data/demo_viome_test.csv"
     label_test_path = "../data/label_test_breakfast_only.csv"
 
-    # Step 1: Merge modalities
+    # Merge modalities
     print("Processing training data...")
     merged_data = merge_modalities(img_path, cgm_path, viome_path, label_path)
 
-    # Step 2: Prepare DataLoader
+    # Prepare DataLoader
     dataloader = prepare_dataloader(merged_data, batch_size=32)
-
-    # Step 3: Test DataLoader
-    # Verify the total number of rows in the DataLoader
-    total_rows = 0
-    for batch in dataloader:
-        total_rows += len(batch["label"])  # Summing up the batch sizes
-
-    print(f"Total number of rows in the DataLoader: {total_rows}")
-
-    # Verify the column names in the DataLoader
-    sample_batch = next(iter(dataloader))  # Get the first batch
-    print(f"Column names in the DataLoader: {sample_batch.keys()}")
-
 
     # Verify DataLoader Keys
     batch = next(iter(dataloader))  # Extract the first batch
 
-    # Step 1: Verify Image Data
-    print(f"Image Before Breakfast Shape: {batch['image_breakfast'].shape}")  # Should be (batch_size, 64, 64, 3)
-    print(f"Image Before Lunch Shape: {batch['image_lunch'].shape}")  # Should be (batch_size, 64, 64, 3)
-
-    # Step 2: Verify CGM Data
-    print(f"CGM Data Shape: {batch['cgm_data'].shape}")  # Should be (batch_size, 16)
-
-    # Step 3: Verify Demographic and Microbiome Data
+    # Verify Demographic and Microbiome Data
     demo_viome_data_shape = batch["demo_viome_data"].shape
-    print(f"Demo and Viome Data Shape: {demo_viome_data_shape}")  # Should include all demographic + microbiome columns
-    # expected_demo_viome_cols = [
-    #     "Age", "Weight", "Height", "BMI", "A1C", "Baseline Fasting Glucose", "Insulin", 
-    #     "Triglycerides", "Cholesterol", "HDL", "Non-HDL", "LDL", "VLDL", "CHO/HDL Ratio", 
-    #     "HOMA-IR", "Viome_1", "Viome_2", ..., "Viome_N", "Gender_0", "Gender_1", ...
-    #     "Race_0", ..., "Race_M", "Diabetes Status_0", ..., "Diabetes Status_P"
-    # ]
-    # print(f"Expected Demo and Viome Columns: {len(expected_demo_viome_cols)}")
     print(f"Actual Demo and Viome Columns: {demo_viome_data_shape[1]}")  # Compare count
-
-    # Step 4: Verify Target Variable
-    print(f"Labels Shape: {batch['label'].shape}")  # Should be (batch_size,)

@@ -5,6 +5,7 @@ from sklearn.model_selection import KFold
 from tqdm import tqdm
 from model import MultimodalModel
 import matplotlib.pyplot as plt
+import numpy as np
 
 # Define RMSRE Loss Function
 class RMSRELoss(torch.nn.Module):
@@ -96,6 +97,7 @@ def k_fold_cross_validation(dataset, hyperparams, num_epochs, k_folds, device):
     kfold = KFold(n_splits=k_folds, shuffle=True, random_state=42)
     fold_results = []
     criterion = RMSRELoss()  # Fixed RMSRE Loss
+    demo_size = len(dataset.demo_viome_data.columns)
 
     for fold, (train_idx, val_idx) in enumerate(kfold.split(dataset)):
         print(f"Fold {fold+1}/{k_folds}")
@@ -106,7 +108,7 @@ def k_fold_cross_validation(dataset, hyperparams, num_epochs, k_folds, device):
         model = MultimodalModel(
                 image_size=(64, 64, 3),
                 cgm_size=16,
-                demo_size=31,
+                demo_size=demo_size,
                 dropout_rate=hyperparams['dropout_rate'],
                 cnn_filters=hyperparams['cnn_filters'],
                 lstm_hidden_size=hyperparams['lstm_hidden_size'],
@@ -130,7 +132,7 @@ def k_fold_cross_validation(dataset, hyperparams, num_epochs, k_folds, device):
     return fold_results
 
 
-def train_full_model(model, dataloader, optimizer, criterion=RMSRELoss(), num_epochs=20, device='cpu'):
+def train_full_model(model, dataloader, optimizer, criterion=RMSRELoss(), num_epochs=20, device='cuda'):
     """
     Train the model on the entire dataset.
     """
@@ -166,39 +168,49 @@ def train_full_model(model, dataloader, optimizer, criterion=RMSRELoss(), num_ep
 
     return loss_history
 
-def plot_training_curve(train_loss, val_loss, save_path=None):
+def plot_training_curve(train_loss, save_path=None):
+    """
+    Plots the training loss curve.
+
+    Parameters:
+    - train_loss (list): List of training loss values for each epoch.
+    - save_path (str, optional): Path to save the plot. If None, the plot will not be saved.
+    """
     plt.figure(figsize=(10, 6))
     plt.plot(range(1, len(train_loss) + 1), train_loss, marker='o', label="Train Loss")
-    plt.plot(range(1, len(val_loss) + 1), val_loss, marker='o', label="Validation Loss")
     plt.xlabel("Epochs")
     plt.ylabel("RMSRE Loss")
-    plt.title("Training and Validation Curve")
+    plt.title("Training Curve")
     plt.legend()
     plt.grid(True)
+    
+    # Save the plot if a save_path is provided
     if save_path:
         plt.savefig(save_path)
+    
     plt.show()
 
 def plot_multiple_training_curves(fold_results, save_path=None):
     """
-    Plots training and validation loss curves for multiple folds in one image with subplots.
+    Plots training and validation loss curves for multiple folds in a grid layout.
 
     Parameters:
     - fold_results (list of tuples): List where each element is a tuple containing
       'train_loss' and 'val_loss' for each fold.
     - save_path (str, optional): Path to save the plot. If None, the plot will not be saved.
     """
-    # Set up a figure with subplots (number of rows based on number of folds)
+    # Determine number of folds and grid layout
     num_folds = len(fold_results)
-    fig, axes = plt.subplots(nrows=num_folds, ncols=1, figsize=(10, 6 * num_folds))  # Adjust size as needed
-    
-    # Ensure axes is always iterable even if there's only one fold
-    if num_folds == 1:
-        axes = [axes]
-    
+    cols = 3  # Maximum columns for better visualization
+    rows = (num_folds // cols) + (num_folds % cols > 0)  # Calculate rows dynamically
+
+    # Set up a figure with subplots
+    fig, axes = plt.subplots(nrows=rows, ncols=cols, figsize=(15, 5 * rows))  # Adjust size as needed
+    axes = axes.flatten()  # Flatten axes to make indexing easier
+
     # Loop through each fold result and plot on the respective subplot
     for fold_idx, (train_loss, val_loss) in enumerate(fold_results):
-        ax = axes[fold_idx]  # Get the subplot for the current fold
+        ax = axes[fold_idx]
         ax.plot(range(1, len(train_loss) + 1), train_loss, marker='o', label="Train Loss")
         ax.plot(range(1, len(val_loss) + 1), val_loss, marker='o', label="Validation Loss")
         ax.set_title(f"Fold {fold_idx + 1}")
@@ -206,6 +218,10 @@ def plot_multiple_training_curves(fold_results, save_path=None):
         ax.set_ylabel('Loss')
         ax.legend()
         ax.grid(True)
+
+    # Remove any unused subplots (if the grid layout has extra axes)
+    for i in range(len(fold_results), len(axes)):
+        fig.delaxes(axes[i])
 
     # Adjust layout to avoid overlap
     plt.tight_layout()

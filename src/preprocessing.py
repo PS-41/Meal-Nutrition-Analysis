@@ -190,7 +190,6 @@ def preprocess_demo_viome(demo_viome_data, is_test=False, save_dir="../results/"
 
     # Load saved preprocessing information for test data
     if is_test:
-        print("\n\nmeow\n\n")
         with open(os.path.join(save_dir, "preprocessing_params.pkl"), "rb") as file:
             preprocessing_params = pickle.load(file)
         
@@ -202,10 +201,6 @@ def preprocess_demo_viome(demo_viome_data, is_test=False, save_dir="../results/"
         pca = preprocessing_params['pca']
         scaler = preprocessing_params['scaler']
 
-        print(selected_numerical)
-        print(selected_categorical)
-        print(selected_viome)
-        print(pca_features)
 
 
         scaled_data = scaler.fit_transform(demo_viome_data_expanded[pca_features])
@@ -214,7 +209,6 @@ def preprocess_demo_viome(demo_viome_data, is_test=False, save_dir="../results/"
         pca_df = pd.DataFrame(pca_data, columns=pca_columns, index=demo_viome_data.index)
 
 
-        print("pca col = ", pca_columns)
     else:
         # Training phase
         os.makedirs(save_dir, exist_ok=True)
@@ -317,19 +311,15 @@ def select_categorical_features(demo_viome_data, target_column, categorical_cols
     selected_features = [
         feature for feature, p_val in zip(categorical_cols, p_values) if p_val < p_threshold
     ]
-    print("p = ", p_values)
 
     # Fallback to mutual information if no features selected
     if not selected_features:
-        print("Fallback to mutual information for categorical features.")
         mi_scores = mutual_info_classif(encoded_data, target)
         mi_df = pd.DataFrame({
             "Feature": categorical_cols,
             "Mutual_Info_Score": mi_scores
         }).sort_values(by="Mutual_Info_Score", ascending=False)
         selected_features = mi_df[mi_df["Mutual_Info_Score"] > 0.01]["Feature"].tolist()
-        print(mi_df)
-    print("\n\n selected features num = \n\n", selected_features)
     
 
     return selected_features
@@ -354,9 +344,6 @@ def select_numerical_features(demo_viome_data, target_column, numerical_cols, co
     # Filter features based on correlation threshold
     selected_features = correlations[abs(correlations) > corr_threshold].index.tolist()
 
-    print(correlations)
-
-    print("\n\n selected features num = \n\n", selected_features)
     return selected_features
 
 def apply_pca(demo_viome_data, unselected_numerical, unselected_viome, is_test=False, explained_variance=0.95, save_plots=False, plot_dir="plots", random_state=42):
@@ -413,7 +400,6 @@ def apply_pca(demo_viome_data, unselected_numerical, unselected_viome, is_test=F
         plt.savefig(os.path.join(plot_dir, "cumulative_explained_variance.png"))
     plt.show()
 
-    print("\n\nn componenet = ", n_components)
     # Apply PCA with the determined number of components
     pca = PCA(n_components=n_components, random_state=random_state)
     pca_data = pca.fit_transform(scaled_data)

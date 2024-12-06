@@ -1,0 +1,2 @@
+learning_rate,batch_size,dropout_rate,cnn_filters,lstm_hidden_size,num_lstm_layers,weight_decay,optimizer,avg_train_loss,avg_val_loss
+0.001,16,0.4,"(16, 32)",64,1,1e-05,<class 'torch.optim.adam.Adam'>,0.2041749358177185,0.05043663829565048

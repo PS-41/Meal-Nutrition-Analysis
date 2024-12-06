@@ -7,13 +7,14 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 from model import MultimodalModel  # Import the model class
 from data_prep import MultimodalDataset  # Import the dataset class
-from model_training_utility import train_full_model, k_fold_cross_validation, plot_multiple_training_curves
+from model_training_utility import train_full_model, k_fold_cross_validation, plot_multiple_training_curves, plot_training_curve
 import os
 
 if __name__ == "__main__":
     # Load the dataset
     metadata = torch.load("../data/dataloader_metadata.pth")
     dataset = metadata["dataset"]
+    demo_size = len(dataset.demo_viome_data.columns)
 
     # Load the best hyperparameters
     best_hyperparameters_path = "../results/best_hyperparameters.pth"
@@ -46,7 +47,7 @@ if __name__ == "__main__":
     model = MultimodalModel(
                 image_size=(64, 64, 3),
                 cgm_size=16,
-                demo_size=31,
+                demo_size=demo_size,
                 dropout_rate=best_hyperparameters['dropout_rate'],
                 cnn_filters=best_hyperparameters['cnn_filters'],
                 lstm_hidden_size=best_hyperparameters['lstm_hidden_size'],
@@ -61,7 +62,7 @@ if __name__ == "__main__":
     
     full_loader = DataLoader(dataset, batch_size=best_hyperparameters['batch_size'], shuffle=True)
 
-    train_full_model(
+    full_train_loss = train_full_model(
         model=model,
         dataloader=full_loader,
         optimizer=optimizer,
@@ -69,6 +70,9 @@ if __name__ == "__main__":
         device=device,
     )
 
+    plot_training_curve(full_train_loss, save_path="../results/full_training_curve.png")
+
     # Save the final trained model
-    torch.save(model.state_dict(), "../results/multimodal_model.pth")
+    # torch.save(model.state_dict(), "../results/multimodal_model.pth")
+    torch.save(model, "../results/trained_multimodal_model.pth")
     print("Final model trained and saved.")

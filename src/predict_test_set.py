@@ -47,15 +47,18 @@ if __name__ == "__main__":
     test_dataset = MultimodalDataset(test_merged_data, True)
     test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 
+    demo_size = len(test_dataset.demo_viome_data.columns)
+
     print("Test DataLoader created successfully.")
 
     # Step 2: Load the trained model
-    model = MultimodalModel(image_size=(64, 64, 3), cgm_size=16, demo_size=31)
-    model.load_state_dict(torch.load("../results/multimodal_model.pth", map_location='cpu'))
+    # model = MultimodalModel(image_size=(64, 64, 3), cgm_size=16, demo_size=demo_size)
+    # model.load_state_dict(torch.load("../results/multimodal_model.pth", map_location='cpu'))
+    model = torch.load("../results/trained_multimodal_model.pth", map_location='cpu')
     print("Trained model loaded successfully.")
 
     # Step 3: Predict labels for the test set
-    device = 'cpu'  # Use 'cuda' if GPU is available
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
     predictions = predict_test_set(model, test_loader, device=device)
 
     # Step 4: Prepare the submission file
