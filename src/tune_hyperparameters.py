@@ -74,14 +74,14 @@ if __name__ == "__main__":
             'weight_decay': wd,
             'optimizer': opt
         }
-        for lr in [1e-3]
+        for lr in [1e-3, 1e-2, 1e-1]
         for bs in [16]
-        for dr in [0.4]
-        for cnn_filters in [(16, 32)]
-        for lstm_hs in [64]
-        for num_lstm_layers in [1]
+        for dr in [0.2, 0.4]
+        for cnn_filters in [(16, 32), (32, 64)]
+        for lstm_hs in [64, 128]
+        for num_lstm_layers in [1, 2]
         for wd in [1e-5]
-        for opt in [torch.optim.Adam]
+        for opt in [torch.optim.Adam, torch.optim.SGD, torch.optim.RMSprop]
     ]
 
     num_epochs = 20
